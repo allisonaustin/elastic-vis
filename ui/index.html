@@ -1,73 +1,57 @@
 <!DOCTYPE html>
-<html>
-
+<html lang="en">
 <head>
-  <link rel='stylesheet' href='styles/main.css'>
-  <script src='https://d3js.org/d3.v5.min.js'></script>
-  <script src="https://d3js.org/d3-array.v2.min.js"></script>
-  <script src="https://d3js.org/d3-geo.v1.min.js"></script>
-  <!-- <script src="scripts/libs/d3-lasso.min.js"></script> -->
-  <script src="https://unpkg.com/d3-simple-slider"></script>
-  <script src="https://unpkg.com/topojson-client@3"></script>
-  <title>Elastic FDA</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ElasticFDA</title>
+    
+    <!-- <link id="favicon" rel="shortcut icon" href=""/> -->
+    <!-- Styling -->
+    <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/4.0.0/css/bootstrap.min.css" integrity="sha384-Gn5384xqQ1aoWXA+058RXPxPg6fy4IWvTNh0E263XmFcJlSAwiGgFAW/dAiS6JXm" crossorigin="anonymous">
+    <link rel='stylesheet' href='styles/main.css'>
+    
+    <!-- Scripts -->
+    <script src='https://d3js.org/d3.v5.min.js'></script>
+    <script src="https://d3js.org/d3-array.v2.min.js"></script>
+    <script src="https://d3js.org/d3-geo.v1.min.js"></script>
+    <!-- <script src="scripts/libs/d3-lasso.min.js"></script> -->
+    <script src="https://unpkg.com/d3-simple-slider"></script>
+    <script src="https://unpkg.com/topojson-client@3"></script>
 </head>
 
-<body>
-  <div class='wrapper_main'>
-    <div class='wrapper_left'>
-      <div id="ts_view">
-        <div class='view_title'>Time Series View</div>
-        <div class="config">
-          Dataset:
-         <!-- Data select -->
-          <select id="data_selection" onchange="update()"> 
-            <option value="hpc_oda_col_system.csv">hpc_oda_col_system.csv</option>
-              <option value="hpc_oda_col_idle.csv">hpc_oda_col_idle.csv</option>
-              <option value="hpc_oda_cpu_cycles.csv">hpc_oda_cpu_cycles.csv</option>
-              <option value="hpc_oda_cache_misses.csv">hpc_oda_cache_misses.csv</option>
-              <option value="accel_phone_A_x.csv">accel_phone_A_x.csv</option>
-              <option value="gyro_phone_A_x.csv">gyro_phone_A_x.csv</option>
-              <option value="gyro_phone_B_x.csv" selected>gyro_phone_B_x.csv</option>
-            </select>
-          </div>
-          <!-- Config -->
-          <div id="depth-config">
-            <form type="submit" id="depth-params">
-              Parameters: IQR Multiplier<input type="number" class="num-input" id="k-input" value="1.5" step="0.1">
-              Threshold<input type="number" class="num-input" id="threshold-input" value="0.5" step="0.1"><br>
-              <input class="compute-btn" type="submit" value="Compute"></input>
-            </form>
-          </div>
-          <!-- View select-->
-          <!-- <div id="button-container">
-            <button id="btn1" class="toggle-btn" value="0">Normal View</button>
-            <button id="btn2" class="toggle-btn active" value="1">Outlier View</button>
-          </div> -->
-          <!-- Error message -->
-          <div id="error-message"></div>
-          <!-- Time series svg -->
-          <div id='ts-container'>
-            <svg id='line-svg'></svg>
-          </div>
-      </div>
-    </div>
-        <div class="wrapper_right">
-          <div id="ds_view">
-            <div class="view_title">Depth Space</div>
-              <svg id="graph-svg" width="100%" height="100%"></svg>
-            </div>
-        </div>
-    </div>
-    <div class="wrapper_bottom">
-      <div id="fs_view">
-        <div class='view_title'>Functions View</div>
-          <svg id="ts_legend" width="100%" height="20%"></svg>  
-          <div id="fs-list"></div>
-        </div>
-      </div>
-  </div>
+<body class="text-unselectable">
 
-  <script src='main.js' type='module'></script>
+    <div class="content container-fluid text-center">
+    <form id="start-task" action="task.html">
+        <h2 class="py-2 mt-4">Elastic FDA Visualization</h2>
+        <h4 class="py-2 mt-4">Experiment Setup</h4>
+        <div id="domain-options">
+            <input type="radio" name="domain" id="sc-domain" value="0">Supercomputer</input>
+            <input type="radio" name="domain" id="act-domain" value="1">Activity</input>
+        </div>
+        <div id="participant_id" class="py-2 mt-4">
+            <input type="text" id="p_id" name="participantID" class="input-text" onkeydown="return (event.keyCode!=13 && event.keyCode!=189);" placeholder="Participant ID" autocomplete="off" required>
+        <h4 class="py-1"></h4>
+        <input type="submit" class="btn btn-primary" id="task-btn" href="" target="#" value="Begin task"></input>
+        </form>
+    </div>
+
+    <script>
+        /**
+        * create message box and return svg:g
+        * @param {string} msg 
+        */
+        const messageBox = function(msg) {
+            const box = d3.create('svg:g').classed('message-box', true);
+            box.append('rect')
+                .attr('width', msg.length * 6.5 + 5)
+                .attr('height', 22);
+            box.append('text')
+                .text(msg)
+                .attr('x', 5).attr('y', 5);
+            return box.node();
+        };
+    </script>
 </body>
 
 </html>

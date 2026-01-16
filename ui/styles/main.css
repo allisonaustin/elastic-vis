@@ -15,7 +15,7 @@ select {
 
 .wrapper_main {
   width: 98.5%;
-  height: 65%;
+  height: 63%;
   display: flex;
 }
 
@@ -456,10 +456,11 @@ div.tooltip-module {
   display:block;
   padding-left: 10px;
   padding-bottom: 10px;
+  padding-top: 3px;
 }
 
 #depth-params {
-  display: flex;
+  display: none;
   gap: 5px;
   align-items: center; 
 }
@@ -546,4 +547,8 @@ button {
 
 .scroll-container::-webkit-scrollbar-track {
   background: transparent;
+}
+
+.btn {
+  margin-top: 10px;
 }

@@ -2,6 +2,7 @@ import * as d3 from 'd3';
 import axios from 'axios';
 import { pallette, scale, percentColToD3Rgb } from './colors.js';
 import { isEmpty, debounce, isUndefined } from 'lodash';
+import { submitDepthParams } from '../main.js';
 
 const margin = { left: 50, right: 30, top: 20, bottom: 30 }
 let size = { width: 0, height1: 0, height2: 0 }
@@ -15,6 +16,7 @@ let svgdata = []
 let depths = []
 let labels = []
 let viewType = 1;
+let initial = true;
 
 export let brushStart;
 export let brushEnd;
@@ -89,26 +91,26 @@ function getXAxisScale(data, width) {
     }
 }
 
-export function mountChart(chartdata, viewType) {
+export function mountChart(chartdata, viewType, start, end) {
     svgdata = chartdata.data
     depths = chartdata.depths
     labels = chartdata.labels
     viewType = viewType
+    brushStart = start 
+    brushEnd = end
 
-    size = { width: 700, height1: 300, height2: 100 }
+    size = { width: 700, height1: 200, height2: 100 }
 
     d3.select('#line-svg').selectAll('*').remove()
 
-    svg = d3.select('#line-svg').attr('viewBox', `0 0 ${size.width + margin.right + margin.left} ${size.height1 + size.height2 + margin.top + margin.bottom}`);
-    chartContainer = svg.append('g')
-        .attr('id', 'time-series-container')
-        .attr('transform', `translate(0,${-margin.top})`)
+    chartContainer = d3.select('#line-svg').attr('viewBox', `0 0 ${size.width + margin.right + margin.left} ${size.height1 + size.height2 + margin.top}`);
 
     if (viewType == 1) {
         addLegend();
         addFuncs();
     }
     focusView(chartdata.data);
+    initial = false;
 }
 
 function addLegend() {
@@ -220,7 +222,7 @@ export function focusView(data) {
     
     const focus = chartContainer.append('g')
         .attr('class', 'focus')
-        .attr('transform', `translate(${margin.left},${margin.top})`)
+        .attr('transform', `translate(${margin.left},${-margin.top - margin.bottom})`)
     
     focus.selectAll('.line')
         .data(grouped)
@@ -269,7 +271,7 @@ function contextView(data, grouped) {
 
     const context = chartContainer.append('g')
       .attr('class', 'context')
-      .attr('transform', `translate(${ margin.left },${ size.height1 + size.height2 - margin.bottom - margin.top })`)
+      .attr('transform', `translate(${ margin.left },${ size.height1 })`)
     
     context.selectAll('.line')
         .data(grouped)
@@ -310,7 +312,7 @@ function contextView(data, grouped) {
 
     const brush = d3.brushX(x2)
         .extent([[0, 20 ], [size.width, size.height2 + margin.top]])
-        .on('brush', brushed)
+        .on('end', brushed)
     
     context.append('g')
         .attr('class', 'x-brush')
@@ -343,13 +345,32 @@ function brushed(event) {
             }
         }) - 1;
 
-        d3.selectAll('.focus .line').attr('d', d => d3.line()
-            .x(d => x1(d.index))
-            .y(d => y1(d.value))
-            (d[1]) 
-        );
+        console.log(brushStart, brushEnd)
 
-        d3.select('.focus .x-axis').call(d3.axisBottom(x1));
+        const t = d3.transition()
+            .duration(400) 
+            .ease(d3.easeCubicInOut);
+
+        if (!initial) {
+            d3.selectAll('.focus .line')
+                .transition(t)
+                .attr('d', d => d3.line()
+                    .x(d => x1(d.index))
+                    .y(d => y1(d.value))
+                    (d[1]) 
+            );
+        } else {
+            d3.selectAll('.focus .line')
+                .attr('d', d => d3.line()
+                    .x(d => x1(d.index))
+                    .y(d => y1(d.value))
+                    (d[1]) 
+            );
+        }
+
+        d3.select('.focus .x-axis').transition(t).call(d3.axisBottom(x1));
+
+        submitDepthParams(new Event('submit'));
     }
 }
 

@@ -12,8 +12,8 @@ df = pd.DataFrame()
 depths = StreamingDepth()
 fname = ''
 
-@app.route("/getData/<filename>/<k>/<threshold>")
-def get_data(filename, k, threshold):
+@app.route("/getData/<filename>/<k>/<threshold>/<start>/<end>")
+def get_data(filename, k, threshold, start=None, end=None):
     global fname 
     global df 
 
@@ -21,7 +21,10 @@ def get_data(filename, k, threshold):
     df = pd.read_csv('./data/'+filename)
     df = df.replace({np.nan: None})
 
-    return get_outliers(k, threshold)
+    start = None 
+    end = None
+
+    return get_outliers(k, threshold, start, end)
 
 
 @app.route("/getOutliers/<k>/<threshold>/<start>/<end>")
@@ -29,11 +32,11 @@ def get_outliers(k=1.5, threshold=0.5, start=None, end=None):
     global df 
     global depths
 
-    if (start == None):
+    if (start == 'undefined' or start == None):
         startIdx = round(len(df) * 0.3)
     else:
         startIdx = int(start)
-    if (end == None):
+    if (end == 'undefined' or end == None):
         endIdx = round(len(df) * 0.4)
     else:
         endIdx = int(end)

@@ -125,7 +125,7 @@ function appendCircles(data) {
             } 
         })
         .attr('stroke-width', 2)
-        .attr('opacity', 0);
+        .attr('opacity', 0.8);
 
     circs
         .transition()

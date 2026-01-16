@@ -6,8 +6,9 @@ let previousStart;
 let previousEnd;
 let errorStatus;
 
-async function getData(filename, kValue, thresholdValue) {
-  const flaskUrl = `http://127.0.0.1:5001/getData/${filename}/${kValue}/${thresholdValue}`;
+async function getData(filename, kValue, thresholdValue, start, end) {
+  console.log('getting data...')
+  const flaskUrl = `http://127.0.0.1:5001/getData/${filename}/${kValue}/${thresholdValue}/${start}/${end}`;
   try {
     const res = await fetch(flaskUrl);
     if (!res.ok) {
@@ -50,9 +51,9 @@ async function mount(file, viewType) {
   const thresholdValue = document.getElementById('threshold-input').value;
   const timeSeriesData = await getData(file, kValue, thresholdValue);
   if (!errorStatus) {
-    mountChart(timeSeriesData, viewType)
     previousStart = Math.floor(timeSeriesData.data.length * 0.3);
     previousEnd = Math.floor(timeSeriesData.data.length * 0.4);
+    mountChart(timeSeriesData, viewType, previousStart, previousEnd)
     mountGraph(timeSeriesData)
     drawBox(kValue, thresholdValue)
   }
@@ -62,14 +63,48 @@ async function mount(file, viewType) {
 async function reloadChart(file) {
   const kValue = document.getElementById('k-input').value;
   const thresholdValue = document.getElementById('threshold-input').value;
-  const timeSeriesData = await getData(file, kValue, thresholdValue);
+  const timeSeriesData = await getData(file, kValue, thresholdValue, brushStart, brushEnd);
   // let viewType = document.querySelector('.active').value;
   let viewType = 1;
   if (!errorStatus) {
-    mountChart(timeSeriesData, viewType)
+    mountChart(timeSeriesData, viewType, brushStart, brushEnd)
     mountGraph(timeSeriesData)
     drawBox(kValue, thresholdValue)
   }
+}
+
+function getDatasetFromUrl() {
+  const urlParams = new URLSearchParams(window.location.search);
+  return urlParams.get('domain');
+}
+
+function updateFileOptions(domain) {
+  let selectElement = document.getElementById('data_selection');
+  selectElement.innerHTML = ''; 
+
+  let options = [];
+
+  if (domain == 0) {
+    options = [
+      { value: 'hpc_oda_col_idle.csv', text: 'col_idle' },
+      { value: 'hpc_oda_col_system.csv', text: 'col_system' },
+      { value: 'hpc_oda_cpu_cycles.csv', text: 'cpu_cycles' },
+      { value: 'hpc_oda_cache_misses.csv', text: 'cache_misses' }
+    ];
+  } else if (domain == 1) {
+    options = [
+      { value: 'accel_phone_A_x.csv', text: 'Accel Phone Walking' },
+      { value: 'gyro_phone_A_x.csv', text: 'Gyro Phone Walking' },
+      { value: 'gyro_phone_B_x.csv', text: 'Gyro Phone Jogging' }
+    ];
+  }
+
+  options.forEach(option => {
+    let optElement = document.createElement('option');
+    optElement.value = option.value;
+    optElement.text = option.text;
+    selectElement.appendChild(optElement);
+  });
 }
 
 function updateViewType(viewType) {
@@ -77,7 +112,16 @@ function updateViewType(viewType) {
 }
 
 function init() {
-  let filename = document.getElementById('data_selection').value;
+  // let filename = document.getElementById('data_selection').value;
+  let filename = "";
+  let dataset = getDatasetFromUrl();
+  if (dataset == 0) {
+    filename = 'hpc_oda_col_idle.csv';
+  } else if (dataset == 1) {
+    filename = 'gyro_phone_A_x.csv';
+  }
+  document.getElementById('data_selection').value = filename;
+  updateFileOptions(dataset);
   // let viewType = document.querySelector('.active').value;
   let viewType = 1;
   
@@ -86,7 +130,6 @@ function init() {
   } else if (viewType == 1) {
     document.getElementById('depth-config').style.display = 'block';
   }
-
   mount(filename, viewType);
 }
 
@@ -116,29 +159,34 @@ window.update = () => {
 }
 
 document.addEventListener('DOMContentLoaded', function () {
-  init();
+  // document.getElementById("depth-params").addEventListener("submit", submitDepthParams);
+  if (!window.hasInitialized) {
+    window.hasInitialized = true;
+    init();  
+  }
 })
 
 // document.getElementsByClassName("num-input").addEventListener("input", function (event) {
 //   this.value = this.value.replace(/[^0-9]/g, '');
 // });
 
-document.getElementById("depth-params").addEventListener("submit", submitDepthParams);
-
-async function submitDepthParams(event) {
+export async function submitDepthParams(event) {
   event.preventDefault();
-
-   document.body.classList.add('freeze');
 
   const kValue = document.getElementById('k-input').value;
   const thresholdValue = document.getElementById('threshold-input').value;
 
   // change in defaults
-  if ((kValue != 1.5) || (thresholdValue != 0.4) || (previousStart != brushStart) || (previousEnd != brushEnd)) {
+  if ((parseFloat(kValue) != 1.5) || (parseFloat(thresholdValue) != 0.5) 
+        || (parseFloat(previousStart) != parseFloat(brushStart)) 
+          || (parseFloat(previousEnd) != parseFloat(brushEnd))) {
+    document.body.classList.add('freeze');
     const timeSeriesData = await computeOutliers(kValue, thresholdValue, brushStart, brushEnd)
-    document.body.classList.remove('freeze');
     updateLabels(timeSeriesData)
     updateData(timeSeriesData)
+    previousStart = brushStart;
+    previousEnd = brushEnd;
+    document.body.classList.remove('freeze');
   }
 }
 

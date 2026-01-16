@@ -112,16 +112,16 @@ function updateViewType(viewType) {
 }
 
 function init() {
-  // let filename = document.getElementById('data_selection').value;
-  let filename = "";
-  let dataset = getDatasetFromUrl();
-  if (dataset == 0) {
-    filename = 'hpc_oda_col_idle.csv';
-  } else if (dataset == 1) {
-    filename = 'gyro_phone_A_x.csv';
-  }
-  document.getElementById('data_selection').value = filename;
-  updateFileOptions(dataset);
+  let filename = document.getElementById('data_selection').value;
+  // let filename = "";
+  // let dataset = getDatasetFromUrl();
+  // if (dataset == 0) {
+  //   filename = 'hpc_oda_col_idle.csv';
+  // } else if (dataset == 1) {
+  //   filename = 'gyro_phone_A_x.csv';
+  // }
+  // document.getElementById('data_selection').value = filename;
+  // updateFileOptions(dataset);
   // let viewType = document.querySelector('.active').value;
   let viewType = 1;
   

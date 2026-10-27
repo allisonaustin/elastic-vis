@@ -8,6 +8,10 @@ VENV="$ROOT/server/.venv"
 PYTHON="${PYTHON:-python3}"
 
 command -v "$PYTHON" >/dev/null || { echo "Error: $PYTHON not found. Install Python 3.8-3.11."; exit 1; }
+# the pinned numpy/pandas only install on 3.8-3.11
+"$PYTHON" -c 'import sys; sys.exit(not (3, 8) <= sys.version_info[:2] <= (3, 11))' \
+    || { echo "Error: $PYTHON is Python $("$PYTHON" -c 'import platform; print(platform.python_version())'); 3.8-3.11 is required. Run e.g. PYTHON=python3.11 ./start.sh"; exit 1; }
+command -v git >/dev/null || { echo "Error: git not found; it's needed to install streaming_elastic."; exit 1; }
 command -v npm >/dev/null || { echo "Error: npm not found. Install Node.js (https://nodejs.org)."; exit 1; }
 
 # --- Server dependencies ---
@@ -22,13 +26,6 @@ if ! (cd "$ROOT/server" && "$VENV/bin/python" -c "import streaming_elastic" 2>/d
     # --no-deps: its setup.py lists compiled modules that come from fdasrsf instead
     "$VENV/bin/pip" install -q --disable-pip-version-check --no-deps \
         "git+https://github.com/allisonaustin/streaming-depths.git#subdirectory=elastic_depth"
-fi
-
-# --- Multivariate data files (data/ is gitignored, so build them from the per-feature CSVs) ---
-if { [ -d "$ROOT/server/data/wisdm" ] && [ ! -f "$ROOT/server/data/accel_phone_x.csv" ]; } \
-    || { [ -d "$ROOT/server/data/hpc-oda" ] && { [ ! -f "$ROOT/server/data/hpc_oda_1sec.csv" ] || [ ! -f "$ROOT/server/data/hpc_oda_1min.csv" ]; }; }; then
-    echo "Combining per-feature data files..."
-    (cd "$ROOT/server" && "$VENV/bin/python" combine_data.py)
 fi
 
 # --- UI dependencies ---

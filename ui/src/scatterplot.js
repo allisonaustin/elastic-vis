@@ -5,10 +5,16 @@ import { isEmpty, debounce, isUndefined } from 'lodash';
 import { getSelection, highlight, setSelection } from './selection.js';
 
 // top and right margins hold the depth distributions behind the outlier thresholds
-const margin = { left: 145, right: 165, top: 135, bottom: 80 }
+const margin = { left: 145, right: 165, top: 100, bottom: 80 }
 const tickCount = { x: 5, y: 8 }
 // square plot area
 const size = { width: 800, height: 800 - margin.left - margin.right + margin.top + margin.bottom }
+
+// sized before any data so the depth space layout (see lineplot.js) can rely on it
+d3.select('#graph-svg')
+    .attr('viewBox', `0 0 ${size.width} ${size.height}`)
+    .attr('preserveAspectRatio', 'xMidYMin meet')
+    .style('aspect-ratio', `${size.width} / ${size.height}`);
 let svgdata = []
 let depths = []
 let labels = []
@@ -44,7 +50,9 @@ let xAxis, yAxis;
 // chart even when no node falls below it.
 function depthDomain(values, cutoff) {
     const [lo, hi] = d3.extent([...values, cutoff]);
-    const pad = (hi - lo) * 0.08;
+    // when every depth is equal (e.g. no node needs warping, so all phase depths are 1)
+    // there's no range to pad, so pad around the value instead
+    const pad = hi > lo ? (hi - lo) * 0.08 : Math.max(Math.abs(hi) * 0.05, 0.01);
     return [lo - pad, hi + pad];
 }
 
@@ -64,8 +72,7 @@ export function mountGraph(data, stats) {
 
     let nodes = toNodes(depths);
 
-    svg = d3.select('#graph-svg')
-        .attr('viewBox', `0 0 ${size.width} ${size.height}`);
+    svg = d3.select('#graph-svg');
 
     xScale = d3.scaleLinear()
         .domain(depthDomain(nodes.map(d => d.phase), stats.phs.cutoff))
@@ -173,10 +180,10 @@ function appendCircles(data) {
         .attr('class', 'ds-circle')
         .attr('cx', d => xScale(d.phase)) // x-position based on phase depth
         .attr('cy', d => yScale(d.amplitude)) // y-position based on amplitude depth
-        .attr('r', 7)
+        .attr('r', 4.5)
         .attr('fill', (d, i) => outlierStyle(labels, i).fill)
         .attr('stroke', (d, i) => outlierStyle(labels, i).stroke)
-        .attr('stroke-width', 2)
+        .attr('stroke-width', 1.5)
         .attr('opacity', 0.8);
 
     circs
@@ -190,8 +197,8 @@ function appendCircles(data) {
         .enter()
             .append('text')
             .attr('class', 'ds-text')
-            .attr('x', d => xScale(d.phase) + 7)
-            .attr('y', d => yScale(d.amplitude) - 7)
+            .attr('x', d => xScale(d.phase) + 6)
+            .attr('y', d => yScale(d.amplitude) - 6)
             .text(d => d.id)
             .attr('fill', 'black');
 }
@@ -241,13 +248,13 @@ function updateCircles(newdata) {
         .attr('cy', d => yScale(d.amplitude))
         .attr('fill', (d, i) => outlierStyle(labels, i).fill)
         .attr('stroke', (d, i) => outlierStyle(labels, i).stroke)
-        .attr('stroke-width', 2)
+        .attr('stroke-width', 1.5)
 
     circleText
         .transition()
         .duration(500)
-        .attr('x', d => xScale(d.phase) + 7)
-        .attr('y', d => yScale(d.amplitude) - 7)
+        .attr('x', d => xScale(d.phase) + 6)
+        .attr('y', d => yScale(d.amplitude) - 6)
 }
 
 export function setRegionsVisible(visible) {

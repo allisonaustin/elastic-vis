@@ -1,36 +1,69 @@
 import * as d3 from 'd3';
-import axios from 'axios';
-import { pallette, scale, percentColToD3Rgb, outlierStyle } from './colors.js';
-import { isEmpty, debounce, isUndefined } from 'lodash';
-import { getSelection, highlight, restoreSelection, toggleSelection, setSelection } from './selection.js';
+import { pallette, outlierStyle, amplitudeColor, phaseColor } from './colors.js';
 
-const margin = { left: 70, right: 30, top: 20, bottom: 30 }
-let size = { width: 0, height1: 0, height2: 0 }
-let chartContainer;
-let svg;
-let x1;
-let x2;
-let y1;
-let y2;
-let svgdata = []
-let depths = []
-let labels = []
-let viewType = 1;
-let initial = true;
-let sortMetric = 'name';
+// Overview (Time Series View): one row per feature over the full time range; clicking
+// anywhere in a row selects that feature. A time bar above the rows holds the brush
+// that sets the window depths are computed over, shaded across every row.
+// Focus (above the depth space): the selected feature, zoomed to the window, split
+// into normal nodes, amplitude outliers and phase outliers (a node outlying in both
+// appears in both outlier panels).
+// Lines are colored by the selected feature's outlier labels in every row, so a
+// node keeps its color across features; their datum is [node, points], which the
+// shared selection highlighting relies on.
 
-export let brushStart;
-export let brushEnd;
+// rowHeight is recomputed on mount to give each row ROW_HEIGHT_PX of plot on screen
+const ROW_HEIGHT_PX = 100;
+const overview = { width: 800, margin: { left: 100, right: 20, top: 0, bottom: 8 }, rowHeight: 90, rowGap: 34 };
+// shares the overview's width and side margins so its brush lines up with the rows
+const timebar = { height: 52, track: [6, 28] };
+// panelHeight is refit on every draw so the depth space view fills its panel
+const focus = { width: 800, panelHeight: 80, panelGap: 28, margin: { left: 100, right: 36, top: 4, bottom: 30 } };
+const MIN_PANEL_PX = 60;
+// the combined panel's plot height on screen, rather than filling the view
+const COMBINED_PANEL_PX = 180;
+// the focus view shows normal nodes and each kind of outlier on separate panels, or
+// everything on one panel (outliers drawn over the normal nodes)
+const focusLayouts = {
+    separate: [
+        { key: 'normal', title: 'Normal', color: '#555', test: (amp, phs) => !amp && !phs },
+        { key: 'amplitude', title: 'Amplitude outliers', color: amplitudeColor, test: amp => amp },
+        { key: 'phase', title: 'Phase outliers', color: phaseColor, test: (amp, phs) => phs }
+    ],
+    combined: [
+        { key: 'all', title: 'Normal and outliers', color: '#555', test: () => true }
+    ]
+};
+let focusPanels = focusLayouts.separate;
 
-// called after the brush settles on a new window; set by main.js
-let onBrush = () => {};
-export function setBrushHandler(handler) {
-    onBrush = handler;
+export function setFocusLayout(layout) {
+    focusPanels = focusLayouts[layout];
+    if (dataset) drawFocus();
+}
+// depths need a few points per series
+const MIN_WINDOW = 5;
+
+let dataset;
+let times = [];
+let series = {};
+let selectedFeature;
+let timeWindow = [0, 0];
+let labels = null;
+let x;
+let brush;
+let brushGroup;
+
+let handlers = { onWindow: () => {}, onFeature: () => {} };
+export function setTimeSeriesHandlers(newHandlers) {
+    handlers = { ...handlers, ...newHandlers };
 }
 
-let defaultColor = pallette.lightgray;
-function getLineProperties(measurement) {
-    const index = Object.values(labels.measurement).indexOf(measurement);
+export function getWindow() {
+    return timeWindow;
+}
+
+const defaultColor = pallette.lightgray;
+function getLineProperties(node) {
+    const index = labels ? Object.values(labels.measurement).indexOf(node) : -1;
     if (index !== -1) {
         const style = outlierStyle(labels, index);
         if (style.outlier) {
@@ -40,20 +73,11 @@ function getLineProperties(measurement) {
     return { color: defaultColor, opacity: 0.5, width: 1 };
 }
 
-function processData(data) {
-    let processed = []
-    data.forEach((d, index) => {
-        (Object.keys(d)).forEach((c) => {
-            if (c != 'timestamp' && c != 'index') {
-                processed.push({ 
-                    index: d.timestamp ? d3.timeParse('%Y-%m-%d %H:%M:%S')(d.timestamp) : index,
-                    value: +d[c],
-                    measurement: c,
-                });
-            }
-        })
-    })
-    return processed;
+function styleLines(selection) {
+    selection
+        .style('stroke', d => getLineProperties(d[0]).color)
+        .style('opacity', d => getLineProperties(d[0]).opacity)
+        .style('stroke-width', d => getLineProperties(d[0]).width);
 }
 
 function formatTick(d) {
@@ -64,349 +88,319 @@ function formatTick(d) {
     }
 }
 
-function getXAxisScale(data, width) {
-    if (svgdata.some(d => d.hasOwnProperty('timestamp'))) {
-        return d3.scaleTime()
-            .domain(d3.extent(data, function(d) { return d.index }))
-            .range([ 0, width ]);
-    } else {
-        return d3.scaleLinear()
-            .domain(d3.extent(data, function(d) { return d.index }))
-            .range([0, width]);
-    }
+// a feature with its display name when the dataset provides one, e.g. "A - Walking"
+export function featureTitle(feature) {
+    const label = dataset.labels && dataset.labels[feature];
+    return label ? `${feature} - ${label}` : feature;
 }
 
-export function mountChart(chartdata, viewType, start, end) {
-    svgdata = chartdata.data
-    depths = chartdata.depths
-    labels = chartdata.labels
-    viewType = viewType
-    brushStart = start 
-    brushEnd = end
-
-    size = { width: 700, height1: 200, height2: 100 }
-
-    d3.select('#line-svg').selectAll('*').remove()
-
-    chartContainer = d3.select('#line-svg').attr('viewBox', `0 0 ${size.width + margin.right + margin.left} ${size.height1 + size.height2 + margin.top}`);
-
-    if (viewType == 1) {
-        addFuncs();
-    }
-    focusView(chartdata.data);
-    initial = false;
+function timeScale() {
+    return dataset.timeColumn == 'timestamp' ? d3.scaleTime() : d3.scaleLinear();
 }
 
-// https://observablehq.com/@thetylerwolf/day-16-zoomable-area-chart
-export function focusView(data) {
-    data = processData(svgdata)
-    const grouped = d3.group(data, d => d.measurement)
-    
-    const format = d3.format(",.0f");
+// a row range with its date(s) when the data has timestamps, e.g.
+// "2019-11-30, 05:39:00 – 15:38:00"; plain indices otherwise
+export function rangeLabel([start, end]) {
+    if (dataset.timeColumn != 'timestamp') return windowLabel([start, end]);
+    const date = d3.timeFormat('%Y-%m-%d');
+    const time = d3.timeFormat('%H:%M:%S');
+    return date(times[start]) == date(times[end])
+        ? `${date(times[start])}, ${time(times[start])} – ${time(times[end])}`
+        : `${date(times[start])} ${time(times[start])} – ${date(times[end])} ${time(times[end])}`;
+}
 
-    x1 = getXAxisScale(data, size.width)
+export function windowLabel([start, end]) {
+    if (dataset.timeColumn == 'timestamp') {
+        const fmt = d3.timeFormat('%H:%M:%S');
+        return `${fmt(times[start])} – ${fmt(times[end])}`;
+    }
+    return `${times[start]} – ${times[end]}`;
+}
 
-    y1 = d3.scaleLinear()
-      .domain([d3.min(data, function(d) { return +d.value }), d3.max(data, function(d) { return +d.value; })])
-      .range([ size.height1, 0 ]);
+export function mountOverview(newDataset, feature, initialWindow) {
+    dataset = newDataset;
+    selectedFeature = feature;
+    timeWindow = initialWindow;
+    labels = null;
 
-    const line = d3.line()
-        .x(function(d) { return x1(d.index) })
-        .y(function(d) { return y1(+d.value) })
+    const parse = d3.timeParse('%Y-%m-%d %H:%M:%S');
+    const firstBlock = dataset.data[dataset.features[0]];
+    times = firstBlock.map(r => dataset.timeColumn == 'timestamp' ? parse(r.timestamp) : +r.index);
+    series = {};
+    dataset.features.forEach(f => {
+        const rows = dataset.data[f];
+        series[f] = dataset.nodes.map(node => [node, rows.map((r, i) => ({ t: times[i], value: +r[node] }))]);
+    });
 
-    chartContainer.append('defs')
-        .append('clipPath')
-            .attr('id', 'clip')
-        .append('rect')
-            .attr('width', size.width)
-            .attr('height', size.height1)
-    
-    const focus = chartContainer.append('g')
-        .attr('class', 'focus')
-        .attr('transform', `translate(${margin.left},${-margin.top - margin.bottom})`)
-    
-    focus.selectAll('.line')
-        .data(grouped)
-        .enter()
-            .append('path')
-            .attr('id', (d) => `${d[0]}-focus`)
-            .attr('class', (d, i) => {
-                let classes = `line `;
-                if (labels.amp[i]) classes += '.amplitude';
-                if (labels.phs[i]) classes += '.phase';
-                return classes;
-            })
-            .attr('clip-path', 'url(#clip)')
+    const { width, margin, rowGap } = overview;
+    // the SVG scales with the panel's width, so convert the on-screen height through it
+    const overviewWidth = document.getElementById('overview-container').clientWidth;
+    if (overviewWidth) {
+        overview.rowHeight = ROW_HEIGHT_PX * width / overviewWidth;
+    }
+    const rowHeight = overview.rowHeight;
+    const height = margin.top + dataset.features.length * (rowGap + rowHeight) + margin.bottom;
+    const svg = d3.select('#overview-svg');
+    svg.selectAll('*').remove();
+    svg.attr('viewBox', `0 0 ${width} ${height}`);
+
+    x = timeScale()
+        .domain(d3.extent(times))
+        .range([margin.left, width - margin.right]);
+    const rowTop = i => margin.top + i * (rowGap + rowHeight) + rowGap;
+
+    dataset.features.forEach((f, i) => {
+        const values = series[f].flatMap(s => s[1].map(p => p.value));
+        const y = d3.scaleLinear()
+            .domain(d3.extent(values))
+            .range([rowHeight, 0]);
+        const line = d3.line().x(p => x(p.t)).y(p => y(p.value));
+
+        const row = svg.append('g')
+            .attr('class', 'feature-row')
+            .datum(f)
+            .attr('transform', `translate(0, ${rowTop(i)})`)
+            .on('click', () => {
+                if (f != selectedFeature) handlers.onFeature(f);
+            });
+        row.append('rect')
+            .attr('class', 'row-bg')
+            .attr('x', 0)
+            .attr('y', -rowGap + 4)
+            .attr('width', width)
+            .attr('height', rowHeight + rowGap - 4);
+        row.append('rect')
+            .attr('class', 'row-accent')
+            .attr('x', 0)
+            .attr('y', -rowGap + 4)
+            .attr('width', 5)
+            .attr('height', rowHeight + rowGap - 4);
+        row.append('g')
+            .attr('class', 'context')
+            .selectAll('.line')
+            .data(series[f])
+            .join('path')
+            .attr('class', 'line')
             .style('fill', 'none')
-            .style('stroke', (d, i) => viewType == 0 ? d3.schemeCategory10[i % 10] : getLineProperties(d[0]).color)
-            .style('opacity', (d) => viewType == 0 ? 1 : getLineProperties(d[0]).opacity)
-            .style('stroke-width', (d) => viewType == 0 ? 1 : getLineProperties(d[0]).width)
             .attr('d', d => line(d[1]))
+            .call(styleLines);
+        row.append('rect')
+            .attr('class', 'window-band')
+            .attr('y', 0)
+            .attr('height', rowHeight);
+        row.append('g')
+            .attr('transform', `translate(${margin.left}, 0)`)
+            .call(d3.axisLeft(y).ticks(3).tickFormat(formatTick));
+        row.append('text')
+            .attr('class', 'feature-label')
+            .attr('x', 14)
+            .attr('y', -10)
+            .text(featureTitle(f));
+    });
 
-    focus.append('g')
-        .attr('class', 'x-axis')
-        .attr('transform', `translate(0,${ size.height1 })`)
-          .call(d3.axisBottom(x1))
-          .select('.domain')
-          .remove()
-
-    focus.append('g')
-        .attr('class', 'y-axis')
-        .call(d3.axisLeft(y1).tickFormat(formatTick));
-        // .select('.domain')
-        // .remove()
-
-    contextView(data, grouped)
+    mountTimebar();
+    markSelectedFeature();
+    drawFocus();
 }
 
-function contextView(data, grouped) {
-    x2 = getXAxisScale(data, size.width)
+function mountTimebar() {
+    const { width, margin } = overview;
+    const [top, bottom] = timebar.track;
+    const svg = d3.select('#timebar-svg');
+    svg.selectAll('*').remove();
+    svg.attr('viewBox', `0 0 ${width} ${timebar.height}`);
 
-    y2 = d3.scaleLinear()
-        .domain([d3.min(data, function(d) { return +d.value }), d3.max(data, function(d) { return +d.value; })])
-        .range([ size.height2, 0 ]);
+    svg.append('rect')
+        .attr('class', 'timebar-track')
+        .attr('x', margin.left)
+        .attr('y', top)
+        .attr('width', width - margin.left - margin.right)
+        .attr('height', bottom - top);
+    svg.append('g')
+        .attr('transform', `translate(0, ${bottom})`)
+        .call(d3.axisBottom(x).ticks(6));
+    svg.append('text')
+        .attr('class', 'timebar-label')
+        .attr('x', margin.left - 8)
+        .attr('y', (top + bottom) / 2)
+        .attr('dy', '0.35em')
+        .attr('text-anchor', 'end')
+        .text('Time range');
 
-    let line2 = d3.line()
-        .x(function(d) { return x2(d.index) })
-        .y(function(d) { return y2(+d.value) })
-
-    const context = chartContainer.append('g')
-      .attr('class', 'context')
-      .attr('transform', `translate(${ margin.left },${ size.height1 })`)
-    
-    context.selectAll('.line')
-        .data(grouped)
-        .enter()
-            .append('path')
-            .attr('id', (d) => `${d[0]}-context`)
-            .attr('class', (d, i) => {
-                let classes = `line `;
-                if (labels.amp[i]) classes += '.amplitude';
-                if (labels.phs[i]) classes += '.phase';
-                return classes;
-            })
-            .attr('clip-path', 'url(#clip)')
-            .style('fill', 'none')
-            .style('stroke', (d, i) => viewType == 0 ? d3.schemeCategory10[i % 10] : getLineProperties(d[0]).color)
-            .style('opacity', (d) => viewType == 0 ? 1 : getLineProperties(d[0]).opacity)
-            .style('stroke-width', (d) => viewType == 0 ? 1 : getLineProperties(d[0]).width)
-            .attr('d', d => line2(d[1]))
-
-    context.append('g')
-        .attr('class', 'x-axis')
-        .attr('transform',  `translate(0,${ size.height2 })`)
-        .call( d3.axisBottom(x2) )
-
-    context.append("g")
-        .call(d3.axisLeft(y2).tickFormat(formatTick));
-
-    context.append('g')
+    brush = d3.brushX()
+        .extent([[margin.left, top], [width - margin.right, bottom]])
+        .on('brush', event => {
+            if (event.selection) drawWindowBands(event.selection);
+        })
+        .on('end', brushed);
+    brushGroup = svg.append('g')
         .attr('class', 'x-brush')
-
-    brushStart = Math.floor(data.length * 0.3);
-    brushEnd = Math.floor(data.length * 0.4);
-
-    const defaultWindow = [
-        x2(data[brushStart].index),
-        x2(data[brushEnd].index)
-    ]
-
-    const brush = d3.brushX(x2)
-        .extent([[0, 20 ], [size.width, size.height2 + margin.top]])
-        .on('end', brushed)
-    
-    context.append('g')
-        .attr('class', 'x-brush')
-        .attr('transform', `translate(0, ${-margin.top})`)
         .call(brush)
-        .call(brush.move, defaultWindow)
+        .call(brush.move, timeWindow.map(i => x(times[i])));
+    drawWindowBands(timeWindow.map(i => x(times[i])));
+}
+
+// shades the brushed range across every feature row
+function drawWindowBands([x0, x1]) {
+    d3.selectAll('#overview-svg .window-band')
+        .attr('x', x0)
+        .attr('width', Math.max(x1 - x0, 1));
+    // the same range as fractions of the loaded time, for the functions' heatmap strips
+    const [left, right] = x.range();
+    const list = document.getElementById('fs-list');
+    list.style.setProperty('--window-left', `${100 * (x0 - left) / (right - left)}%`);
+    list.style.setProperty('--window-width', `${100 * Math.max(x1 - x0, 1) / (right - left)}%`);
 }
 
 function brushed(event) {
-    if (event.selection) {
-        let extent = event.selection.map(d => x2.invert(d));
+    // only react to the user; programmatic moves (mount, restore) pass no sourceEvent
+    if (!event.sourceEvent) return;
+    if (!event.selection) {
+        // a click without dragging would clear the brush; keep the current window
+        brushGroup.call(brush.move, timeWindow.map(i => x(times[i])));
+        drawWindowBands(timeWindow.map(i => x(times[i])));
+        return;
+    }
+    const [t0, t1] = event.selection.map(x.invert);
+    let start = d3.bisectLeft(times, t0);
+    let end = Math.min(d3.bisectRight(times, t1) - 1, times.length - 1);
+    if (end - start + 1 < MIN_WINDOW) {
+        end = Math.min(start + MIN_WINDOW - 1, times.length - 1);
+        start = end - MIN_WINDOW + 1;
+        brushGroup.call(brush.move, [x(times[start]), x(times[end])]);
+    }
+    drawWindowBands([x(times[start]), x(times[end])]);
+    if (start == timeWindow[0] && end == timeWindow[1]) return;
+    timeWindow = [start, end];
+    drawFocus();
+    handlers.onWindow(timeWindow);
+}
 
-        x1.domain(extent);
+export function selectFeature(feature) {
+    selectedFeature = feature;
+    markSelectedFeature();
+    drawFocus();
+}
 
-        const isDateIndex = svgdata.some(d => d.hasOwnProperty('timestamp'));
+function markSelectedFeature() {
+    d3.selectAll('#overview-svg .feature-row').classed('selected', f => f == selectedFeature);
+    d3.selectAll('#overview-svg .feature-label').classed('selected', f => f == selectedFeature);
+}
 
-        brushStart = svgdata.findIndex(d => {
-            if (isDateIndex) {
-                return new Date(d.timestamp) >= extent[0]
-            } else {
-                return Math.round(d.index) >= Math.round(extent[0])
-            }
-        });
+// Gives the focus panels the Depth Space View's height left over after its other
+// parts, with the scatterplot at its natural (width-based) size, so the view fills
+// its panel. When space is short the panels keep a minimum and the scatterplot shrinks.
+function fitFocusPanels() {
+    const view = document.getElementById('ds_view');
+    const lineSvg = document.getElementById('line-svg');
+    const graphSvg = document.getElementById('graph-svg');
+    const scale = lineSvg.clientWidth / focus.width;
+    if (!scale || !view.clientHeight) return;
 
-        brushEnd = svgdata.findIndex(d => {
-            if (isDateIndex) {
-                return new Date(d.timestamp) > extent[1]
-            } else {
-                return Math.round(d.index) > Math.round(extent[1])
-            }
-        }) - 1;
+    const outer = el => {
+        const style = getComputedStyle(el);
+        return parseFloat(style.marginTop) + parseFloat(style.marginBottom);
+    };
+    let fixed = 0;
+    for (const child of view.children) {
+        if (getComputedStyle(child).position == 'absolute') continue;
+        fixed += outer(child);
+        if (child != lineSvg && child != graphSvg) fixed += child.getBoundingClientRect().height;
+    }
+    const box = graphSvg.viewBox.baseVal;
+    const scatter = box && box.width ? graphSvg.clientWidth * box.height / box.width : 0;
 
-        console.log(brushStart, brushEnd)
+    const { panelGap, margin } = focus;
+    const panels = focusPanels.length;
+    const chrome = (margin.top + margin.bottom + panels * panelGap) * scale;
+    let focusPx = Math.max(view.clientHeight - fixed - scatter, chrome + panels * MIN_PANEL_PX);
+    if (focusPanels == focusLayouts.combined) {
+        focusPx = Math.min(focusPx, chrome + COMBINED_PANEL_PX);
+    }
+    focus.panelHeight = (focusPx - chrome) / panels / scale;
+}
 
-        const t = d3.transition()
-            .duration(400) 
-            .ease(d3.easeCubicInOut);
+// redraw when the panel resizes so the fit holds
+new ResizeObserver(() => {
+    if (dataset) drawFocus();
+}).observe(document.getElementById('ds_view'));
 
-        if (!initial) {
-            d3.selectAll('.focus .line')
-                .transition(t)
-                .attr('d', d => d3.line()
-                    .x(d => x1(d.index))
-                    .y(d => y1(d.value))
-                    (d[1]) 
-            );
-        } else {
-            d3.selectAll('.focus .line')
-                .attr('d', d => d3.line()
-                    .x(d => x1(d.index))
-                    .y(d => y1(d.value))
-                    (d[1]) 
-            );
+function drawFocus() {
+    fitFocusPanels();
+    const { width, panelHeight, panelGap, margin } = focus;
+    const [start, end] = timeWindow;
+    const windowed = series[selectedFeature].map(([node, points]) => [node, points.slice(start, end + 1)]);
+
+    d3.select('#focus-title').text(featureTitle(selectedFeature));
+
+    const height = margin.top + focusPanels.length * (panelGap + panelHeight) + margin.bottom;
+    const svg = d3.select('#line-svg');
+    svg.selectAll('*').remove();
+    svg.attr('viewBox', `0 0 ${width} ${height}`);
+
+    // all panels share one time and value scale so they can be compared directly
+    const fx = timeScale()
+        .domain([times[start], times[end]])
+        .range([margin.left, width - margin.right]);
+    const fy = d3.scaleLinear()
+        .domain(d3.extent(windowed.flatMap(s => s[1].map(p => p.value))))
+        .nice()
+        .range([panelHeight, 0]);
+    const line = d3.line().x(p => fx(p.t)).y(p => fy(p.value));
+
+    const nodeIndex = labels ? Object.values(labels.measurement) : [];
+    const flags = node => {
+        const i = nodeIndex.indexOf(node);
+        return i == -1 ? [false, false] : [labels.amp[i], labels.phs[i]];
+    };
+
+    focusPanels.forEach((panel, i) => {
+        // outliers last so they're drawn over the normal nodes
+        const members = windowed.filter(([node]) => panel.test(...flags(node)))
+            .sort((a, b) => d3.ascending(flags(a[0]).some(Boolean), flags(b[0]).some(Boolean)));
+        const g = svg.append('g')
+            .attr('transform', `translate(0, ${margin.top + i * (panelGap + panelHeight) + panelGap})`);
+        g.append('text')
+            .attr('class', 'panel-title')
+            .attr('x', margin.left)
+            .attr('y', -8)
+            .attr('fill', panel.color)
+            .text(`${panel.title} (${members.length})`);
+        g.append('g')
+            .attr('class', 'focus')
+            .selectAll('.line')
+            .data(members)
+            .join('path')
+            .attr('class', 'line')
+            .style('fill', 'none')
+            .attr('d', d => line(d[1]))
+            .call(styleLines);
+        if (!members.length) {
+            g.append('text')
+                .attr('class', 'panel-empty')
+                .attr('x', (margin.left + width - margin.right) / 2)
+                .attr('y', panelHeight / 2)
+                .attr('text-anchor', 'middle')
+                .text('none');
         }
-
-        d3.select('.focus .x-axis').transition(t).call(d3.axisBottom(x1));
-
-        onBrush();
-    }
-}
-
-export function changeView(type) {
-    viewType = type
-    d3.selectAll('.focus .line')
-        .style('stroke', (d, i) => viewType == 0 ? d3.schemeCategory10[i % 10] : getLineProperties(d[0]).color)
-        .style('opacity', (d) => viewType == 0 ? 1 : getLineProperties(d[0]).opacity)
-        .style('stroke-width', (d) => viewType == 0 ? 1 : getLineProperties(d[0]).width)
-    
-    d3.selectAll('.context .line')
-        .style('stroke', (d, i) => viewType == 0 ? d3.schemeCategory10[i % 10] : getLineProperties(d[0]).color)
-        .style('opacity', (d) => viewType == 0 ? 1 : getLineProperties(d[0]).opacity)
-        .style('stroke-width', (d) => viewType == 0 ? 1 : getLineProperties(d[0]).width)
-
-    if (viewType == 1) {
-        showFuncs();
-    } else if (viewType == 0) {
-        hideFuncs();
-    }
-}
-
-export function addFuncs() {
-    removeFuncs();
-    const fsList = document.getElementById('fs-list');
-
-    let dataList = Object.keys(depths.amplitude).map(key => ({
-        amplitude: depths.amplitude[key],
-        phase: depths.phase[key],
-        measurement: depths.measurement[key]
-    }));
-
-    dataList.forEach((item, i) => {
-        const fn = document.createElement('div');
-        fn.classList.add('fs_option');
-        fn.textContent = item.measurement;
-        fn.dataset.index = i;
-
-        // hovering previews a node alongside the current selection; clicking toggles it
-        fn.addEventListener('mouseover', () => highlight([...getSelection(), item.measurement]));
-        fn.addEventListener('mouseout', restoreSelection);
-        fn.addEventListener('click', () => toggleSelection(item.measurement));
-
-        fsList.appendChild(fn);
-    });
-    styleFuncs();
-}
-
-// Colors each function by its outlier label and refreshes its depths for sorting.
-function styleFuncs() {
-    document.querySelectorAll('.fs_option').forEach(fn => {
-        const i = fn.dataset.index;
-        const style = outlierStyle(labels, i);
-        fn.style.background = style.outlier ? style.fill : '';
-        fn.style.borderColor = style.outlier ? style.stroke : '';
-        fn.style.color = style.outlier ? style.text : '';
-        fn.title = `amplitude depth ${d3.format('.4f')(depths.amplitude[i])}\nphase depth ${d3.format('.4f')(depths.phase[i])}`;
-    });
-    sortFuncs(sortMetric);
-}
-
-// Orders the functions list by 'name', or by 'amplitude' / 'phase' depth with the
-// most outlying (lowest depth) first.
-export function sortFuncs(metric) {
-    sortMetric = metric;
-    const fsList = document.getElementById('fs-list');
-    const fns = Array.from(fsList.children);
-    if (metric == 'name') {
-        fns.sort((a, b) => a.textContent.localeCompare(b.textContent, undefined, { numeric: true }));
-    } else {
-        const values = depths[metric];
-        fns.sort((a, b) => d3.ascending(values[a.dataset.index], values[b.dataset.index]));
-    }
-    fns.forEach(fn => fsList.appendChild(fn));
-}
-
-export function showFuncs() {
-    const fs = document.querySelectorAll('.fs_option');
-    fs.forEach(fn => {
-        fn.style.display = 'inline-block';
+        g.append('g')
+            .attr('transform', `translate(${margin.left}, 0)`)
+            .call(d3.axisLeft(fy).ticks(3).tickFormat(formatTick));
+        g.append('g')
+            .attr('transform', `translate(0, ${panelHeight})`)
+            .call(d3.axisBottom(fx).ticks(6).tickFormat(i == focusPanels.length - 1 ? null : ''));
     });
 }
 
-export function hideFuncs() {
-    const fs = document.querySelectorAll('.fs_option');
-    fs.forEach(fn => {
-        fn.style.display = 'none';
-    });
-}
-
-export function removeFuncs() {
-    const fContainer = document.getElementById('fs-list');
-    fContainer.innerHTML = '';
+// Recolors every line from the analyzed feature's outlier labels and re-sorts the
+// focus panels.
+export function updateLineColors(newLabels) {
+    labels = newLabels;
+    d3.selectAll('.context .line').call(styleLines);
+    drawFocus();
 }
 
 export function resetLineOpacity() {
     d3.selectAll('.focus .line, .context .line')
-        .style('opacity', (d) => viewType == 0 ? 1 : getLineProperties(d[0]).opacity);
+        .style('opacity', d => getLineProperties(d[0]).opacity);
 }
-
-export function updateLabels(chartdata) {
-    depths = chartdata.depths
-    labels = chartdata.labels
-
-    // updating line properties for focus and context views
-    d3.selectAll('.focus .line')
-        .attr('class', (d, i) => {
-            let classes = `line `;
-            if (labels.amp[i]) classes += '.amplitude';
-            if (labels.phs[i]) classes += '.phase';
-            return classes;
-        })
-        .style('stroke', (d, i) => viewType == 0 ? d3.schemeCategory10[i % 10] : getLineProperties(d[0]).color)
-        .style('opacity', (d) => viewType == 0 ? 1 : getLineProperties(d[0]).opacity)
-        .style('stroke-width', (d) => viewType == 0 ? 1 : getLineProperties(d[0]).width)
-    
-    d3.selectAll('.context .line')
-        .attr('class', (d, i) => {
-            let classes = `line `;
-            if (labels.amp[i]) classes += '.amplitude';
-            if (labels.phs[i]) classes += '.phase';
-            return classes;
-        })
-        .style('stroke', (d, i) => viewType == 0 ? d3.schemeCategory10[i % 10] : getLineProperties(d[0]).color)
-        .style('opacity', (d) => viewType == 0 ? 1 : getLineProperties(d[0]).opacity)
-        .style('stroke-width', (d) => viewType == 0 ? 1 : getLineProperties(d[0]).width)
-
-
-    styleFuncs();
-}
-
-// clicking elsewhere clears the selection; the depth space handles its own clicks
-document.addEventListener('click', function(event) {
-    const keep = ['fs-list', 'ds_view'].some(id => document.getElementById(id).contains(event.target));
-    if (!keep) {
-        setSelection([]);
-    }
-});

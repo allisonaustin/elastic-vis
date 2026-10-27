@@ -2,6 +2,7 @@
 <html>
 
 <head>
+  <meta charset="utf-8">
   <link rel='stylesheet' href='styles/main.css'>
   <script src='https://d3js.org/d3.v5.min.js'></script>
   <script src="https://d3js.org/d3-array.v2.min.js"></script>
@@ -14,34 +15,83 @@
 
 <body>
   <div class='wrapper_main'>
-    <div class='wrapper_left'>
-      <div id="ts_view">
-        <div class='view_title'>Time Series View</div>
-        <div class="config">
-          Dataset:
-         <!-- Data select -->
-          <select id="data_selection" onchange="update()"> 
-            <option value="hpc_oda_col_system.csv">hpc_oda_col_system.csv</option>
-              <option value="hpc_oda_col_idle.csv">hpc_oda_col_idle.csv</option>
-              <option value="hpc_oda_cpu_cycles.csv">hpc_oda_cpu_cycles.csv</option>
-              <option value="hpc_oda_cache_misses.csv">hpc_oda_cache_misses.csv</option>
-              <option value="accel_phone_A_x.csv">accel_phone_A_x.csv</option>
-              <option value="gyro_phone_A_x.csv">gyro_phone_A_x.csv</option>
-              <option value="gyro_phone_B_x.csv" selected>gyro_phone_B_x.csv</option>
-            </select>
-          </div>
-          <!-- Error message -->
-          <div id="error-message"></div>
-          <!-- Time series svg -->
-          <div id='ts-container'>
-            <svg id='line-svg'></svg>
-          </div>
+    <div class="wrapper_functions">
+      <div id="fs_view">
+        <div class='view_title'>Global Functions View</div>
+        <div id="fs-sort">
+          Sort by
+          <select id="fs-sort-select">
+            <option value="name">Name</option>
+            <option value="amplitude">Amplitude depth</option>
+            <option value="phase">Phase depth</option>
+          </select>
+        </div>
+        <!-- outlier colors, shared by the strips and the other views; hover a category to highlight it -->
+        <div id="ds-legend">
+          <span class="legend-item" data-category="normal"><span class="swatch normal"></span>normal</span>
+          <span class="legend-scale">
+            <span class="legend-title">Outliers</span>
+            <span class="ramp"></span>
+            <span class="ramp-labels">
+              <span class="legend-item" data-category="amplitude">amplitude</span>
+              <span class="legend-item" data-category="both">both</span>
+              <span class="legend-item" data-category="phase">phase</span>
+            </span>
+          </span>
+        </div>
+        <!-- the selected variable, whose outliers the strips show; filled by main.js -->
+        <div id="strip-header"></div>
+        <div id="fs-list"></div>
       </div>
     </div>
-    <div class="wrapper_center">
+    <div class='wrapper_timeseries'>
+      <div id="ts_view">
+        <div class='view_title'>Time Series View</div>
+        <div class="ts-controls">
+          <div class="field">
+            <span class="field-label">Data</span>
+            <!-- what's loaded; Change data reopens the setup card -->
+            <div class="data-summary">
+              <span>
+                <span id="data-summary-name"></span>
+                <span id="data-summary-detail"></span>
+              </span>
+              <button id="change-data" type="button" class="secondary-btn">Load data</button>
+            </div>
+          </div>
+        </div>
+        <div class="hint">Drag in the time bar to set the window; click a row to analyze that variable.</div>
+        <!-- Error message -->
+        <div id="error-message"></div>
+        <!-- the time range brush, kept in view while the rows scroll -->
+        <div id="timebar-container">
+          <svg id="timebar-svg"></svg>
+        </div>
+        <!-- one row per feature; the brushed range is shaded across them -->
+        <div id="overview-container">
+          <svg id="overview-svg"></svg>
+        </div>
+      </div>
+    </div>
+    <div class="wrapper_depth">
       <div id="ds_view">
         <div class="view_title">Depth Space View</div>
-        <svg id="graph-svg"></svg>
+        <!-- selected feature, zoomed to the time window -->
+        <div id="focus-header">
+          <span id="focus-title"></span>
+          <!-- normal nodes and outliers on separate panels or one; see setFocusLayout -->
+          <span class="toggle-group" role="group" aria-label="Outlier panels">
+            <button type="button" class="active" data-layout="separate" aria-pressed="true">Separated</button>
+            <button type="button" data-layout="combined" aria-pressed="false">Combined</button>
+          </span>
+        </div>
+        <svg id="line-svg"></svg>
+        <!-- depths are only recomputed on request, so time windows and features can be explored first -->
+        <div id="depth-bar">
+          <button id="recompute-btn" type="button" disabled>Recompute</button>
+          <span id="depth-status"></span>
+        </div>
+        <svg id="graph-svg" class="hide-labels"></svg>
         <!-- Outlier thresholds: a node is an outlier when its depth is below both
              median - k * (max - median) and the given quantile of depths -->
         <form id="threshold-config">
@@ -58,36 +108,56 @@
             <input type="number" class="num-input" id="phs-q" value="0.5" step="0.05" min="0" max="1">
           </div>
           <label class="param-group"><input type="checkbox" id="show-regions" checked> Outlier regions</label>
-          <label class="param-group"><input type="checkbox" id="show-labels" checked> Point labels</label>
+          <label class="param-group"><input type="checkbox" id="show-labels"> Point labels</label>
         </form>
         <!-- Outliers darken from just past the cutoff to the most outlying node -->
-        <div id="ds-legend">
-          <span class="legend-item" data-category="normal"><span class="swatch normal"></span>normal</span>
-          <span class="legend-scale">
-            <span class="ramp"></span>
-            <span class="ramp-labels">
-              <span class="legend-item" data-category="amplitude">amplitude</span>
-              <span class="legend-item" data-category="both">both</span>
-              <span class="legend-item" data-category="phase">phase</span>
-            </span>
+      </div>
+    </div>
+  </div>
+
+  <!-- setup: what to load, chosen before anything is fetched; see src/setup.js -->
+  <div id="setup" class="setup-overlay" hidden>
+    <form id="setup-form" class="setup-card">
+      <h2>Choose data</h2>
+      <label class="field">
+        <span class="field-label">Dataset</span>
+        <select id="setup-dataset"></select>
+      </label>
+      <div class="field">
+        <!-- the dataset's full extent beside the title; selected / total at the right -->
+        <div class="range-header">
+          <span class="field-label">Time range</span>
+          <span id="setup-extent" class="setup-note"></span>
+          <span id="setup-range-note" class="range-count"></span>
+        </div>
+        <!-- one bar with a handle for each end: two range inputs stacked on a shared track -->
+        <div class="range-slider">
+          <div class="range-track"><div id="setup-range-fill" class="range-fill"></div></div>
+          <input type="range" id="setup-start" min="0" value="0" aria-label="Start of time range">
+          <input type="range" id="setup-end" min="0" value="0" aria-label="End of time range">
+        </div>
+        <!-- start and end of the selection -->
+        <div class="range-labels">
+          <span id="setup-start-label" class="range-value"></span>
+          <span id="setup-end-label" class="range-value"></span>
+        </div>
+      </div>
+      <div class="field">
+        <div class="checklist-header">
+          <span class="field-label">Variables</span>
+          <span>
+            <button type="button" id="setup-all" class="link-btn">All</button> ·
+            <button type="button" id="setup-none" class="link-btn">None</button>
           </span>
         </div>
+        <div id="setup-features" class="checklist"></div>
+        <span id="setup-feature-note" class="setup-note"></span>
       </div>
-    </div>
-    <div class="wrapper_right">
-      <div id="fs_view">
-        <div class='view_title'>Functions View</div>
-        <div id="fs-sort">
-          Sort by
-          <select id="fs-sort-select">
-            <option value="name">Name</option>
-            <option value="amplitude">Amplitude depth</option>
-            <option value="phase">Phase depth</option>
-          </select>
-        </div>
-        <div id="fs-list"></div>
+      <div class="setup-actions">
+        <button type="button" id="setup-cancel" class="secondary-btn">Cancel</button>
+        <button type="submit" id="setup-load" class="primary-btn">Load</button>
       </div>
-    </div>
+    </form>
   </div>
 
   <script src='main.js' type='module'></script>

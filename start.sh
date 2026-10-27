@@ -24,6 +24,13 @@ if ! (cd "$ROOT/server" && "$VENV/bin/python" -c "import streaming_elastic" 2>/d
         "git+https://github.com/allisonaustin/streaming-depths.git#subdirectory=elastic_depth"
 fi
 
+# --- Multivariate data files (data/ is gitignored, so build them from the per-feature CSVs) ---
+if { [ -d "$ROOT/server/data/wisdm" ] && [ ! -f "$ROOT/server/data/accel_phone_x.csv" ]; } \
+    || { [ -d "$ROOT/server/data/hpc-oda" ] && { [ ! -f "$ROOT/server/data/hpc_oda_1sec.csv" ] || [ ! -f "$ROOT/server/data/hpc_oda_1min.csv" ]; }; }; then
+    echo "Combining per-feature data files..."
+    (cd "$ROOT/server" && "$VENV/bin/python" combine_data.py)
+fi
+
 # --- UI dependencies ---
 echo "Installing UI dependencies..."
 (cd "$ROOT/ui" && npm install --silent)

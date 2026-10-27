@@ -1,30 +1,43 @@
 # ElasticVis
 
-## About 
-Visualizing elastic depths introduced in: \
-**Elastic Depths for Detecting Shape Anomalies in Functional Data** Trevor Harris, J. Derek Tucker, Bo Li, & Lyndsay Shand \
-Technometrics, 63(4), 466–476. https://doi.org/10.1080/00401706.2020.1811156 
-- Elastic depths is available in fdasrsf python package (https://fdasrsf-python.readthedocs.io/en/latest/)
-- The source code can be found here: https://github.com/jdtuck/fdasrsf_python. 
+## About
 
-Note: Tested on macOS Sonoma.
+Visualizing elastic depths introduced in:
+
+- **Elastic Depths for Detecting Shape Anomalies in Functional Data** Trevor Harris, J. Derek Tucker, Bo Li, & Lyndsay Shand. Technometrics, 63(4), 466–476. https://doi.org/10.1080/00401706.2020.1811156
+- Available in fdasrsf python package (https://fdasrsf-python.readthedocs.io/en/latest/)
+- The source code can be found here: https://github.com/jdtuck/fdasrsf_python.
+
+Note: Tested on macOS Sonoma, macOS Tahoe.
 
 ## Requirements
-Python3, Numpy, pandas, Flask
 
-## Setup
+- Python 3.8–3.11
+- Node.js (with npm)
+
+## Quick start
+
+From the repository root, run:
+
+``./start.sh``
+
+## Manual setup
 
 ### UI
+
 Open a terminal and run:
-```cd ui```
+``cd ui``
 
-```npm install```
+``npm install``
 
-```npm run dev```
+``npm run dev``
 
 ### Server
+
 Open another terminal and run:
 
-```cd server```
+``cd server``
 
-```python server.py```
+``pip install -r requirements.txt``
+
+``python server.py``

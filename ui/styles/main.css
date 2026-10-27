@@ -1,22 +1,55 @@
+/* One font size for the whole UI; SVG text is kept at this size by src/fontsize.js */
+:root {
+  --font-size: 13px;
+}
+
 html,
 body {
   /* overflow: scroll; */
   font-family: 'Lucida Grande', sans-serif;
-  font-size: 11px;
+  font-size: var(--font-size);
   width: 100%;
   height: 100%;
-  /* margin: 0 !important; */
+  /* padding instead of the default margin so the page fits the window without scrollbars */
+  margin: 0;
+  padding: 4px;
+  box-sizing: border-box;
 }
 
-select {
-  height: 18px;
-  font-size: 11px;
+select,
+input {
+  font-size: var(--font-size);
+}
+
+svg text {
+  font-size: var(--svg-font-size, var(--font-size));
+}
+
+svg text.axis-title {
+  font-size: calc(var(--svg-font-size, var(--font-size)) * 1.3);
+}
+
+/* white outline keeps labels readable over bars and lines */
+svg text.halo {
+  paint-order: stroke;
+  stroke: white;
+  stroke-width: 3px;
+  stroke-linejoin: round;
+}
+
+.threshold.draggable {
+  cursor: ns-resize;
+}
+
+.threshold.draggable.horizontal {
+  cursor: ew-resize;
 }
 
 .wrapper_main {
   width: 98.5%;
-  height:78%;
+  height: 97%;
   display: flex;
+  gap: 5px;
 }
 
 .wrapper_top {
@@ -26,17 +59,18 @@ select {
 }
 
 .wrapper_left {
-  width: 60%;
+  flex: 5 1 0;
+  min-width: 0;
+}
+
+.wrapper_center {
+  flex: 4 1 0;
+  min-width: 0;
 }
 
 .wrapper_right {
-  width: 39%;
-  padding-left:5px;
-}
-
-.wrapper_bottom {
-  width: 97.9%;
-  height:20%;
+  flex: 0 0 280px;
+  min-width: 0;
 }
 
 .color-selection {
@@ -97,7 +131,7 @@ select {
   padding-left: 5px;
   padding-right: 6px;
   margin-bottom: 10px;
-  font-size: 10px;
+  font-size: var(--font-size);
   color: #FFFFFF;
   background-color: #b5c2d5;
   border-radius: 2.5px;
@@ -135,7 +169,7 @@ select {
   background: rgba(0, 0, 0, 0.8);
   color: #fff;
   border-radius: 2px;
-  font-size: 12px;
+  font-size: var(--font-size);
   text-align: left;
   opacity: 0;
 }
@@ -169,16 +203,94 @@ select {
   border-color: #DDDDDD;
 }
 
-#ts_legend {
-  margin-left: 20px;
+#fs-sort {
+  margin-top: 2em;
+  padding: 0 8px 6px 8px;
 }
 
-
+/* chips fill as many equal columns as fit */
 #fs-list {
-  margin-top: 20px;
-  margin-right: 20px;
-  margin-left: 20px;
+  flex: 1 1 0;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(78px, 1fr));
+  align-content: start;
+  gap: 3px;
+  padding: 0 8px 8px 8px;
   overflow-y: auto;
+}
+
+#ds-legend {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  column-gap: 14px;
+  row-gap: 2px;
+  padding: 4px 10px 0 10px;
+}
+
+.legend-item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  cursor: default;
+}
+
+.legend-scale {
+  display: flex;
+  flex-direction: column;
+  width: 220px;
+}
+
+.ramp {
+  height: 10px;
+}
+
+.ramp-labels {
+  display: flex;
+  justify-content: space-between;
+}
+
+.swatch.normal {
+  background-color: #9bcfd6;
+  border: 1px solid #6ea6ae;
+  box-sizing: border-box;
+}
+
+.hide-labels .ds-text {
+  display: none;
+}
+
+#threshold-config {
+  display: flex;
+  flex-wrap: wrap;
+  column-gap: 14px;
+  row-gap: 2px;
+  margin-top: 18px;
+  padding-top: 12px;
+  border-top: 1px solid #e4e4e4;
+  padding: 0 10px;
+}
+
+.param-group {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  white-space: nowrap;
+}
+
+.swatch {
+  width: 10px;
+  height: 10px;
+}
+
+/* RdYlGn at 0.1 and 0.9, matching amplitudeColor / phaseColor in src/colors.js */
+.swatch.amplitude {
+  background-color: #d4322c;
+}
+
+.swatch.phase {
+  background-color: #22964f;
 }
 
 .fs_option {
@@ -188,15 +300,21 @@ select {
   padding: 3px 5px;
   margin-right: 1px;
   border-radius: 10px;
-  font-size: 10px;
+  font-size: var(--font-size);
   cursor: pointer; 
   border: 1px solid #6ea6ae; 
-  /* box-sizing: border-box; */
+  text-align: center;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .fs_option.active {
   /* box-shadow: 0 0 5px rgba(0, 0, 0, 0.3);  */
   background-color: rgba(0, 123, 255, 0.2);
+  /* outliers keep their color fill, so mark selection with an outline too */
+  outline: 2px solid #1f5fbf;
+  outline-offset: -2px;
   /* transition: box-shadow 0.3s; */
 }
 
@@ -245,6 +363,7 @@ select {
   flex-direction:column;
   width: 100%;
   height: 100%;
+  overflow-y: auto;
   padding-top: 0px;
   border-style: solid;
   border-width: thin;
@@ -272,9 +391,13 @@ select {
   width: 100%;
 }
 
+/* height follows the viewBox so the controls sit right below the plot */
 #graph-svg {
   display: block;
+  flex: 0 0 auto;
+  margin-top: 1.8em;
   width: 100%;
+  cursor: crosshair;
 }
 
 #data_selection {
@@ -285,7 +408,7 @@ select {
 }
 
 .num-input {
-  width:40px;
+  width: 4em;
   margin-left:2px;
   margin-top:2px;
 }
@@ -338,7 +461,7 @@ select {
 
 
 .legend {
-  font-size: 13px;
+  font-size: var(--font-size);
   font-family: 'Lucida Grande', sans-serif;
 }
 
@@ -435,7 +558,7 @@ div.tooltip-module {
   height: 30px;
   padding: 2px;
   font-family: Lucida Grande, Serif;
-  font-size: 12px;
+  font-size: var(--font-size);
   background: lightsteelblue;
   border: 0px;
   border-radius: 8px;
@@ -475,7 +598,7 @@ div.tooltip-module {
 }
 
 #error-message {
-  font-size: 14px;
+  font-size: var(--font-size);
   padding-top: 10px;
   padding-left: 10px;
   width: 100%;
@@ -490,7 +613,7 @@ button {
   padding-left: 5px;
   padding-right: 6px;
   margin-top: 5px;
-  font-size: 10px;
+  font-size: var(--font-size);
   cursor: pointer;
   border-radius: 4px;
   transition: background-color 0.3s;
@@ -526,7 +649,7 @@ button {
   background-color: white;
   color: #b5c2d5;
   border-radius: 3px;
-  font-size: 12px;
+  font-size: var(--font-size);
   transition: background-color 0.3s, color 0.3s;
   font-family: Lucida Grande, Serif;
 }

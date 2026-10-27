@@ -30,14 +30,6 @@
               <option value="gyro_phone_B_x.csv" selected>gyro_phone_B_x.csv</option>
             </select>
           </div>
-          <!-- Config -->
-          <div id="depth-config">
-            <form type="submit" id="depth-params">
-              Parameters: IQR Multiplier<input type="number" class="num-input" id="k-input" value="1.5" step="0.1">
-              Threshold<input type="number" class="num-input" id="threshold-input" value="0.5" step="0.1"><br>
-              <input class="compute-btn" type="submit" value="Compute"></input>
-            </form>
-          </div>  
           <!-- Error message -->
           <div id="error-message"></div>
           <!-- Time series svg -->
@@ -46,20 +38,56 @@
           </div>
       </div>
     </div>
-        <div class="wrapper_right">
-          <div id="ds_view">
-            <div class="view_title">Depth Space</div>
-              <svg id="graph-svg" width="100%" height="100%"></svg>
-            </div>
-        </div>
-    </div>
-    <div class="wrapper_bottom">
-      <div id="fs_view">
-        <div class='view_title'>Functions View</div>
-          <svg id="ts_legend" width="100%" height="20%"></svg>  
-          <div id="fs-list"></div>
+    <div class="wrapper_center">
+      <div id="ds_view">
+        <div class="view_title">Depth Space View</div>
+        <svg id="graph-svg"></svg>
+        <!-- Outlier thresholds: a node is an outlier when its depth is below both
+             median - k * (max - median) and the given quantile of depths -->
+        <form id="threshold-config">
+          <div class="param-group">
+            <span class="swatch amplitude"></span>Amplitude: IQR multiplier (k)
+            <input type="number" class="num-input" id="amp-k" value="1.5" step="0.1" min="0">
+            Quantile
+            <input type="number" class="num-input" id="amp-q" value="0.5" step="0.05" min="0" max="1">
+          </div>
+          <div class="param-group">
+            <span class="swatch phase"></span>Phase: IQR multiplier (k)
+            <input type="number" class="num-input" id="phs-k" value="1.5" step="0.1" min="0">
+            Quantile
+            <input type="number" class="num-input" id="phs-q" value="0.5" step="0.05" min="0" max="1">
+          </div>
+          <label class="param-group"><input type="checkbox" id="show-regions" checked> Outlier regions</label>
+          <label class="param-group"><input type="checkbox" id="show-labels" checked> Point labels</label>
+        </form>
+        <!-- Outliers darken from just past the cutoff to the most outlying node -->
+        <div id="ds-legend">
+          <span class="legend-item" data-category="normal"><span class="swatch normal"></span>normal</span>
+          <span class="legend-scale">
+            <span class="ramp"></span>
+            <span class="ramp-labels">
+              <span class="legend-item" data-category="amplitude">amplitude</span>
+              <span class="legend-item" data-category="both">both</span>
+              <span class="legend-item" data-category="phase">phase</span>
+            </span>
+          </span>
         </div>
       </div>
+    </div>
+    <div class="wrapper_right">
+      <div id="fs_view">
+        <div class='view_title'>Functions View</div>
+        <div id="fs-sort">
+          Sort by
+          <select id="fs-sort-select">
+            <option value="name">Name</option>
+            <option value="amplitude">Amplitude depth</option>
+            <option value="phase">Phase depth</option>
+          </select>
+        </div>
+        <div id="fs-list"></div>
+      </div>
+    </div>
   </div>
 
   <script src='main.js' type='module'></script>

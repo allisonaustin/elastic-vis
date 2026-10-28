@@ -18,8 +18,8 @@ Tested on macOS Sonoma, macOS Tahoe.
 
 ## Datasets
 
-1. [WISDM Smartphone and Smartwatch Activity and Biometrics Dataset](https://archive.ics.uci.edu/ml/machine-learning-databases/00507/WISDM-dataset-description.pdf)
-2. [HPC-ODA Dataset Collection](https://data.niaid.nih.gov/resources?id=zenodo_3701439)
+1. [WISDM Smartphone and Smartwatch Activity and Biometrics Dataset](https://archive.ics.uci.edu/ml/machine-learning-databases/00507/WISDM-dataset-description.pdf) [2]
+2. [HPC-ODA Dataset Collection](https://data.niaid.nih.gov/resources?id=zenodo_3701439) [3]
 
 ## Quick start
 
@@ -53,4 +53,8 @@ Optionally, a `<name>.labels.json` file in `server/data/` gives variables displa
 
 ## References
 
-[1] Elastic Depths for Detecting Shape Anomalies in Functional Data Trevor Harris, J. Derek Tucker, Bo Li, & Lyndsay Shand. Technometrics, 63(4), 466–476. https://doi.org/10.1080/00401706.2020.1811156
+[1] Harris, T., Tucker J. D., Li, B., Shand, L. (2020). Elastic Depths for Detecting Shape Anomalies in Functional Data. Technometrics, 63(4), 466–476. https://doi.org/10.1080/00401706.2020.1811156
+
+[2] Weiss, G. M., Yoneda, K., Hayajneh, T. (2019). Smartphone and Smartwatch-Based Biometrics Using Activities of Daily Living. IEEE Access, 7, 133190-133202, https://doi.org/10.1109/ACCESS.2019.2940729
+
+[3] Netti, A., Tafani, D., Ott, M., & Schulz, M. (2021). Correlation-wise Smoothing: Lightweight Knowledge Extraction for HPC Monitoring Data. Proceedings of the 35th IEEE International Parallel & Distributed Processing Symposium (IPDPS). IEEE. https://doi.org/10.1109/IPDPS49936.2021.00010

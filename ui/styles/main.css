@@ -247,14 +247,11 @@ svg text.halo {
 .strip:not(:empty)::after {
   content: '';
   position: absolute;
-  top: -2px;
-  bottom: -2px;
+  top: 0;
+  bottom: 0;
   left: var(--window-left, 0);
   width: var(--window-width, 0);
-  border: 1.5px solid #3d5a80;
-  border-radius: 2px;
-  background-color: rgba(61, 90, 128, 0.12);
-  box-sizing: border-box;
+  background-color: rgba(61, 90, 128, 0.22);
   pointer-events: none;
 }
 
